@@ -60,7 +60,7 @@ class RealTimePaintApp:
         self.lora_var = tk.StringVar(value="") 
         self.entry_lora = ttk.Entry(self.control_frame, textvariable=self.lora_var, width=50)
         self.entry_lora.grid(row=1, column=1, columnspan=1, padx=5, pady=5, sticky=tk.W)
-        self.entry_lora.insert(0, "D:\\AniFaceProject\\") 
+        self.entry_lora.insert(0, "")  # 用户自行填入 LoRA 路径 
         
         ttk.Label(self.control_frame, text="权重(Strength):").grid(row=1, column=1, sticky=tk.E, padx=120)
         self.lora_weight_var = tk.DoubleVar(value=0.8)
@@ -78,9 +78,11 @@ class RealTimePaintApp:
         
         # 4. 线程锁与状态变量
         self.last_render_time = 0
-        self.render_interval = 0.15 
+        self.render_interval = 0.15
         self.is_rendering = False
         self.need_update_again = False
+        self._preview_thread = None  # 防止预览线程堆积
+        self.state_lock = threading.Lock()  # 保护 is_rendering / need_update_again
         
         self.update_right_display(Image.new("RGB", (512, 512), "white"))
         print("🚀 带有【本地线稿导入】功能的综合画板系统全线就绪！")
@@ -120,14 +122,21 @@ class RealTimePaintApp:
         if self.last_x and self.last_y:
             self.canvas.create_line(self.last_x, self.last_y, x, y, width=4, fill="black", capstyle=tk.ROUND, smooth=True)
             self.draw_buffer.line([self.last_x, self.last_y, x, y], fill="black", width=4)
-            
+
             current_time = time.time()
-            if (current_time - self.last_render_time > self.render_interval) and not self.is_rendering:
-                self.last_render_time = current_time
-                sketch_snapshot = self.sketch_img.copy()
-                t = threading.Thread(target=self.async_preview_render, args=(sketch_snapshot,))
-                t.start()
-            
+            if (current_time - self.last_render_time > self.render_interval):
+                # 检查是否有预览线程仍在运行，避免堆积
+                preview_busy = self._preview_thread and self._preview_thread.is_alive()
+                with self.state_lock:
+                    hq_busy = self.is_rendering
+
+                if not preview_busy and not hq_busy:
+                    self.last_render_time = current_time
+                    sketch_snapshot = self.sketch_img.copy()
+                    t = threading.Thread(target=self.async_preview_render, args=(sketch_snapshot,), daemon=True)
+                    t.start()
+                    self._preview_thread = t
+
         self.last_x = x
         self.last_y = y
 
@@ -136,54 +145,67 @@ class RealTimePaintApp:
         self.trigger_high_quality_render()
 
     def trigger_high_quality_render(self):
-        if not self.is_rendering:
-            sketch_snapshot = self.sketch_img.copy()
-            t = threading.Thread(target=self.async_hq_render, args=(sketch_snapshot,))
-            t.start()
-        else:
-            self.need_update_again = True
+        with self.state_lock:
+            if not self.is_rendering:
+                self.is_rendering = True
+                need_skip = False
+            else:
+                self.need_update_again = True
+                need_skip = True
+
+        if need_skip:
+            return
+
+        sketch_snapshot = self.sketch_img.copy()
+        t = threading.Thread(target=self.async_hq_render, args=(sketch_snapshot,), daemon=True)
+        t.start()
 
     def load_lora_weights_action(self):
         lora_path = self.lora_var.get().strip()
         weight = self.lora_weight_var.get()
-        
-        if lora_path == "D:\\AniFaceProject\\" or not lora_path:
+
+        if not lora_path:
             messagebox.showwarning("提示", "请先在输入框中填入正确的 LoRA 文件绝对路径！")
             return
-            
-        self.is_rendering = True
+
+        with self.state_lock:
+            if self.is_rendering:
+                messagebox.showwarning("提示", "当前正在渲染中，请稍后再加载 LoRA")
+                return
+            self.is_rendering = True
+
         try:
             self.pipe.unload_lora_weights()
             self.stream.pipe.unload_lora_weights()
-            
+
             self.pipe.load_lora_weights(lora_path, adapter_name="paint_lora")
             self.stream.pipe.load_lora_weights(lora_path, adapter_name="paint_lora")
-            
+
             self.pipe.set_adapters(["paint_lora"], adapter_weights=[weight])
             self.stream.pipe.set_adapters(["paint_lora"], adapter_weights=[weight])
-            
+
             current_prompt = self.prompt_var.get()
             self.stream.prepare(prompt=current_prompt, num_inference_steps=2)
-            
+
             messagebox.showinfo("成功", f"LoRA 补丁挂载成功！")
-            self.is_rendering = False
-            self.trigger_high_quality_render()
         except Exception as e:
-            self.is_rendering = False
             messagebox.showerror("加载失败", f"错误信息: {e}")
+        finally:
+            with self.state_lock:
+                self.is_rendering = False
+            self.trigger_high_quality_render()
 
     def async_preview_render(self, img_snapshot):
-        self.is_rendering = True
         try:
             x_output = self.stream(img_snapshot)
             output_image = postprocess_image(x_output, output_type="pil")[0]
             self.root.after(0, self.update_right_display, output_image)
+        except Exception as e:
+            print(f"⚠️ 预览渲染失败: {e}")
         finally:
-            self.is_rendering = False
+            self._preview_thread = None
 
     def async_hq_render(self, img_snapshot):
-        self.is_rendering = True
-        self.need_update_again = False 
         try:
             current_prompt = self.prompt_var.get()
             result = self.pipe(
@@ -195,14 +217,27 @@ class RealTimePaintApp:
             )
             output_image = result.images[0]
             self.root.after(0, self.update_right_display, output_image)
+        except Exception as e:
+            print(f"⚠️ 超清重绘失败: {e}")
         finally:
-            self.is_rendering = False
-            if self.need_update_again:
+            need_again = False
+            with self.state_lock:
+                self.is_rendering = False
+                if self.need_update_again:
+                    self.need_update_again = False
+                    need_again = True
+
+            if need_again:
+                with self.state_lock:
+                    self.is_rendering = True
                 latest_snapshot = self.sketch_img.copy()
-                t = threading.Thread(target=self.async_hq_render, args=(latest_snapshot,))
+                t = threading.Thread(target=self.async_hq_render, args=(latest_snapshot,), daemon=True)
                 t.start()
 
     def update_right_display(self, pil_img):
+        # 先删除旧的 PhotoImage 引用，避免 Tcl 层面内存泄漏
+        if hasattr(self, 'tk_img'):
+            del self.tk_img
         self.tk_img = ImageTk.PhotoImage(pil_img)
         self.output_label.configure(image=self.tk_img)
 

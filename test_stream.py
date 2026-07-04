@@ -32,6 +32,7 @@ def main():
         controlnet=controlnet, 
         torch_dtype=torch.float16
     ).to(device)
+    pipe.safety_checker = None
 
     # 2. 包装进 StreamDiffusion 流式流水线
     # t_index_list=[0, 1, 2, 3] 代表只走 4 步快速采样，这是毫秒级响应的核心机制
