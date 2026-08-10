@@ -15,75 +15,81 @@ class RealTimePaintApp:
     def __init__(self, root, base_pipe, stream_pipeline):
         self.root = root
         self.root.title("🎨 AniFace 交互完全体 (集成线稿导入功能)")
-        self.pipe = base_pipe         
-        self.stream = stream_pipeline 
-        
+        self.pipe = base_pipe
+        self.stream = stream_pipeline
+
         # 初始化画布
         self.sketch_img = Image.new("RGB", (512, 512), "white")
         self.draw_buffer = ImageDraw.Draw(self.sketch_img)
         self.sketch_tk_img = None  # 🔥 用于保存左侧导入图片的引用，防止垃圾回收
-        
+
         # 1. 界面总布局
         self.main_frame = ttk.Frame(root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
+
         # 左右双屏
         self.canvas = tk.Canvas(self.main_frame, width=512, height=512, bg="white", cursor="pencil")
         self.canvas.grid(row=0, column=0, padx=5, pady=5)
-        
+
         self.output_label = ttk.Label(self.main_frame)
         self.output_label.grid(row=0, column=1, padx=5, pady=5)
-        
+
         # 2. 底部综合控制面板
         self.control_frame = ttk.LabelFrame(self.main_frame, text=" 🎛️ AI 实时引导控制面板 ", padding="10")
         self.control_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
-        
+
         # --- 第一行：提示词与基础功能控制 ---
         ttk.Label(self.control_frame, text="提示词 (Prompt):").grid(row=0, column=0, sticky=tk.W, padx=5)
         self.prompt_var = tk.StringVar(value="1girl, masterpiece, hyper detailed, anime portrait, high quality, sharp focus")
         self.entry_prompt = ttk.Entry(self.control_frame, textvariable=self.prompt_var, width=55)
         self.entry_prompt.grid(row=0, column=1, padx=5, pady=5, sticky=(tk.W, tk.E))
         self.entry_prompt.bind("<Return>", lambda event: self.trigger_high_quality_render())
-        
+
         self.btn_update = ttk.Button(self.control_frame, text="💎 25步超清重绘", command=self.trigger_high_quality_render)
         self.btn_update.grid(row=0, column=2, padx=5)
-        
+
         # 🔥 新增：导入线稿按钮
         self.btn_import = ttk.Button(self.control_frame, text="📥 导入线稿图片", command=self.import_sketch_image)
         self.btn_import.grid(row=0, column=3, padx=5)
-        
+
         self.btn_clear = ttk.Button(self.control_frame, text="🧹 擦除画布", command=self.clear_canvas)
         self.btn_clear.grid(row=0, column=4, padx=5)
-        
+
         # --- 第二行：LoRA 动态挂载区 ---
         ttk.Label(self.control_frame, text="LoRA 路径/ID:").grid(row=1, column=0, sticky=tk.W, padx=5)
-        self.lora_var = tk.StringVar(value="") 
+        self.lora_var = tk.StringVar(value="")
         self.entry_lora = ttk.Entry(self.control_frame, textvariable=self.lora_var, width=50)
         self.entry_lora.grid(row=1, column=1, columnspan=1, padx=5, pady=5, sticky=tk.W)
-        self.entry_lora.insert(0, "")  # 用户自行填入 LoRA 路径 
-        
+        self.entry_lora.insert(0, "")  # 用户自行填入 LoRA 路径
+
         ttk.Label(self.control_frame, text="权重(Strength):").grid(row=1, column=1, sticky=tk.E, padx=120)
         self.lora_weight_var = tk.DoubleVar(value=0.8)
         self.scale_lora = ttk.Scale(self.control_frame, from_=0.0, to=1.5, variable=self.lora_weight_var, orient=tk.HORIZONTAL, length=100)
         self.scale_lora.grid(row=1, column=1, sticky=tk.E, padx=10)
-        
+
         self.btn_lora = ttk.Button(self.control_frame, text="📦 挂载/更新 LoRA", command=self.load_lora_weights_action)
         self.btn_lora.grid(row=1, column=2, columnspan=3, padx=5, sticky=(tk.W, tk.E))
-        
+
         # 3. 画笔事件绑定（用户依然可以在导入的图片上继续手绘叠加代码）
         self.canvas.bind("<B1-Motion>", self.paint)
         self.canvas.bind("<ButtonRelease-1>", self.on_mouse_release)
-        
+
         self.last_x, self.last_y = None, None
-        
+
         # 4. 线程锁与状态变量
         self.last_render_time = 0
         self.render_interval = 0.15
         self.is_rendering = False
         self.need_update_again = False
         self._preview_thread = None  # 防止预览线程堆积
-        self.state_lock = threading.Lock()  # 保护 is_rendering / need_update_again
-        
+        self.state_lock = threading.Lock()  # 保护 is_rendering / need_update_again / _preview_thread / last_render_time
+        self.canvas_lock = threading.Lock()  # 保护 sketch_img / draw_buffer 的并发读写
+        self._shutdown_event = threading.Event()  # 优雅退出信号
+        self._last_prompt = ""  # 主线程捕获的 prompt 快照，供后台线程安全读取
+
+        # 注册窗口关闭回调
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
         self.update_right_display(Image.new("RGB", (512, 512), "white"))
         print("🚀 带有【本地线稿导入】功能的综合画板系统全线就绪！")
 
@@ -93,26 +99,27 @@ class RealTimePaintApp:
             title="选择本地线稿图片",
             filetypes=[("图片文件", "*.jpg *.jpeg *.png *.bmp *.webp")]
         )
-        
+
         if file_path:
             try:
                 print(f"📥 正在读取线稿: {file_path}")
                 # 1. 读取并规范化图片（转换成RGB，强制缩放到512x512）
                 imported_img = Image.open(file_path).convert("RGB").resize((512, 512))
-                
+
                 # 2. 覆盖后台内存里的画布，并重置画笔，让用户可以在导入的图上接着画
-                self.sketch_img = imported_img
-                self.draw_buffer = ImageDraw.Draw(self.sketch_img)
-                
+                with self.canvas_lock:
+                    self.sketch_img = imported_img
+                    self.draw_buffer = ImageDraw.Draw(self.sketch_img)
+
                 # 3. 将图片同步渲染刷新到左边的 Tkinter Canvas 屏幕上
                 self.sketch_tk_img = ImageTk.PhotoImage(self.sketch_img)
                 self.canvas.delete("all")  # 擦掉以前手绘的线条痕迹
                 self.canvas.create_image(0, 0, anchor=tk.NW, image=self.sketch_tk_img)
-                
+
                 # 4. 瞬间激活 4080 显卡，利用刚刚导入的线稿直接出超清成品大图！
                 print("💎 线稿载入成功，正在全力触发 25 步超清画质对齐...")
                 self.trigger_high_quality_render()
-                
+
             except Exception as e:
                 print(f"❌ 读取线稿失败: {e}")
                 messagebox.showerror("读取错误", f"无法解析该图片文件，请确保它未损坏。\n错误报告: {e}")
@@ -121,20 +128,24 @@ class RealTimePaintApp:
         x, y = event.x, event.y
         if self.last_x and self.last_y:
             self.canvas.create_line(self.last_x, self.last_y, x, y, width=4, fill="black", capstyle=tk.ROUND, smooth=True)
-            self.draw_buffer.line([self.last_x, self.last_y, x, y], fill="black", width=4)
+            with self.canvas_lock:
+                self.draw_buffer.line([self.last_x, self.last_y, x, y], fill="black", width=4)
 
             current_time = time.time()
-            if (current_time - self.last_render_time > self.render_interval):
-                # 检查是否有预览线程仍在运行，避免堆积
-                preview_busy = self._preview_thread and self._preview_thread.is_alive()
-                with self.state_lock:
-                    hq_busy = self.is_rendering
+            should_render = False
+            with self.state_lock:
+                if (current_time - self.last_render_time > self.render_interval):
+                    preview_busy = self._preview_thread is not None and self._preview_thread.is_alive()
+                    if not preview_busy and not self.is_rendering:
+                        self.last_render_time = current_time
+                        should_render = True
 
-                if not preview_busy and not hq_busy:
-                    self.last_render_time = current_time
+            if should_render:
+                with self.canvas_lock:
                     sketch_snapshot = self.sketch_img.copy()
-                    t = threading.Thread(target=self.async_preview_render, args=(sketch_snapshot,), daemon=True)
-                    t.start()
+                t = threading.Thread(target=self.async_preview_render, args=(sketch_snapshot,), daemon=True)
+                t.start()
+                with self.state_lock:
                     self._preview_thread = t
 
         self.last_x = x
@@ -145,19 +156,19 @@ class RealTimePaintApp:
         self.trigger_high_quality_render()
 
     def trigger_high_quality_render(self):
+        # 在主线程安全读取 prompt，避免后台线程访问 Tkinter StringVar
+        prompt_snapshot = self.prompt_var.get()
         with self.state_lock:
-            if not self.is_rendering:
-                self.is_rendering = True
-                need_skip = False
-            else:
+            if self.is_rendering:
                 self.need_update_again = True
-                need_skip = True
+                self._last_prompt = prompt_snapshot
+                return
+            self.is_rendering = True
+            self._last_prompt = prompt_snapshot
 
-        if need_skip:
-            return
-
-        sketch_snapshot = self.sketch_img.copy()
-        t = threading.Thread(target=self.async_hq_render, args=(sketch_snapshot,), daemon=True)
+        with self.canvas_lock:
+            sketch_snapshot = self.sketch_img.copy()
+        t = threading.Thread(target=self.async_hq_render, args=(sketch_snapshot, prompt_snapshot), daemon=True)
         t.start()
 
     def load_lora_weights_action(self):
@@ -168,11 +179,17 @@ class RealTimePaintApp:
             messagebox.showwarning("提示", "请先在输入框中填入正确的 LoRA 文件绝对路径！")
             return
 
+        # 先检查渲染状态并获取锁，再在锁外显示弹窗
         with self.state_lock:
             if self.is_rendering:
-                messagebox.showwarning("提示", "当前正在渲染中，请稍后再加载 LoRA")
-                return
-            self.is_rendering = True
+                render_busy = True
+            else:
+                self.is_rendering = True
+                render_busy = False
+
+        if render_busy:
+            messagebox.showwarning("提示", "当前正在渲染中，请稍后再加载 LoRA")
+            return
 
         try:
             self.pipe.unload_lora_weights()
@@ -199,24 +216,28 @@ class RealTimePaintApp:
         try:
             x_output = self.stream(img_snapshot)
             output_image = postprocess_image(x_output, output_type="pil")[0]
-            self.root.after(0, self.update_right_display, output_image)
+            if not self._shutdown_event.is_set():
+                self.root.after(0, self.update_right_display, output_image)
         except Exception as e:
             print(f"⚠️ 预览渲染失败: {e}")
         finally:
-            self._preview_thread = None
+            with self.state_lock:
+                self._preview_thread = None
 
-    def async_hq_render(self, img_snapshot):
+    def async_hq_render(self, img_snapshot, prompt_snapshot):
         try:
-            current_prompt = self.prompt_var.get()
+            if self._shutdown_event.is_set():
+                return
             result = self.pipe(
-                prompt=current_prompt,
+                prompt=prompt_snapshot,
                 image=img_snapshot,
                 num_inference_steps=25,
                 controlnet_conditioning_scale=1.1,
                 controlnet_ending_step=0.35  # 高情商纠错，防止导入的线稿有细微瑕疵
             )
             output_image = result.images[0]
-            self.root.after(0, self.update_right_display, output_image)
+            if not self._shutdown_event.is_set():
+                self.root.after(0, self.update_right_display, output_image)
         except Exception as e:
             print(f"⚠️ 超清重绘失败: {e}")
         finally:
@@ -225,16 +246,19 @@ class RealTimePaintApp:
                 self.is_rendering = False
                 if self.need_update_again:
                     self.need_update_again = False
+                    self.is_rendering = True  # 原子设置，消除 TOCTOU 窗口
                     need_again = True
 
-            if need_again:
-                with self.state_lock:
-                    self.is_rendering = True
-                latest_snapshot = self.sketch_img.copy()
-                t = threading.Thread(target=self.async_hq_render, args=(latest_snapshot,), daemon=True)
+            if need_again and not self._shutdown_event.is_set():
+                with self.canvas_lock:
+                    latest_snapshot = self.sketch_img.copy()
+                latest_prompt = self._last_prompt
+                t = threading.Thread(target=self.async_hq_render, args=(latest_snapshot, latest_prompt), daemon=True)
                 t.start()
 
     def update_right_display(self, pil_img):
+        if self._shutdown_event.is_set():
+            return
         # 先删除旧的 PhotoImage 引用，避免 Tcl 层面内存泄漏
         if hasattr(self, 'tk_img'):
             del self.tk_img
@@ -243,9 +267,31 @@ class RealTimePaintApp:
 
     def clear_canvas(self):
         self.canvas.delete("all")
-        self.sketch_img = Image.new("RGB", (512, 512), "white")
-        self.draw_buffer = ImageDraw.Draw(self.sketch_img)
+        with self.canvas_lock:
+            self.sketch_img = Image.new("RGB", (512, 512), "white")
+            self.draw_buffer = ImageDraw.Draw(self.sketch_img)
         self.update_right_display(Image.new("RGB", (512, 512), "white"))
+
+    def on_closing(self):
+        """优雅关闭：等待后台渲染线程完成后销毁窗口，避免 CUDA 报错"""
+        print("🛑 正在安全关闭应用...")
+        self._shutdown_event.set()
+        self._shutdown_attempts = 0
+        self._shutdown_max_attempts = 25  # 最多等待 25 * 200ms = 5 秒
+        self._check_shutdown_complete()
+
+    def _check_shutdown_complete(self):
+        """轮询检查后台线程是否已结束，完成后销毁窗口"""
+        self._shutdown_attempts += 1
+        with self.state_lock:
+            preview_alive = (self._preview_thread is not None
+                             and self._preview_thread.is_alive())
+            hq_busy = self.is_rendering
+
+        if (preview_alive or hq_busy) and self._shutdown_attempts < self._shutdown_max_attempts:
+            self.root.after(200, self._check_shutdown_complete)
+        else:
+            self.root.destroy()
 
 
 def main():
@@ -256,18 +302,18 @@ def main():
         "lllyasviel/sd-controlnet-scribble", torch_dtype=torch.float16
     )
     base_pipe = StableDiffusionControlNetPipeline.from_pretrained(
-        "stablediffusionapi/counterfeit-v30", 
-        controlnet=controlnet, 
+        "stablediffusionapi/counterfeit-v30",
+        controlnet=controlnet,
         torch_dtype=torch.float16
     ).to(device)
     base_pipe.safety_checker = None
 
     stream_pipe = StableDiffusionControlNetPipeline.from_pretrained(
-        "stablediffusionapi/counterfeit-v30", 
-        controlnet=controlnet, 
+        "stablediffusionapi/counterfeit-v30",
+        controlnet=controlnet,
         torch_dtype=torch.float16
     ).to(device)
-    
+
     stream = StreamDiffusion(stream_pipe, t_index_list=[0, 1], torch_dtype=torch.float16)
     initial_prompt = "1girl, masterpiece, hyper detailed, anime portrait, high quality, sharp focus"
     stream.prepare(prompt=initial_prompt, num_inference_steps=2)
