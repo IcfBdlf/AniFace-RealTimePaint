@@ -41,3 +41,14 @@
 ### 提交
 
 `2814fa1` — fix: P0 线程安全修复 — 消除竞态条件与优雅退出
+
+---
+
+## 2026-08-10 — 清理无关文件
+
+- 删除 `transformer_test.py`：独立的 Transformer 模型实现，与 AniFace 画板项目无关
+
+### 提交
+
+`ded8c12` — docs: 新增工作日志 CHANGELOG.md  
+`a2e0d48` — chore: 删除无关文件 transformer_test.py
