@@ -61,8 +61,8 @@ python canvas_stream.py
 ├── canvas_stream.py       # 主应用（GUI + 渲染管线）
 ├── test_stream.py         # 集成测试（模拟草图 → 渲染输出）
 ├── test_thread_safety.py  # 线程安全单元测试（17 项，无需 GPU）
-├── saber/                 # 示例素材
-│   └── fgfdgs1.png        # 测试用线稿图片
+├── assets/                # 示例素材
+│   └── sample_sketch.png  #   测试用线稿图片
 └── CHANGELOG.md           # 工作日志
 ```
 

@@ -98,8 +98,8 @@ AniFaceProject/
 │   ├── pipeline.py           # 🔧 模型加载 & 管线初始化
 │   ├── renderer.py           # 🧵 渲染线程管理
 │   └── app.py                # 🖥️ GUI界面 & 事件处理
-├── saber/                    # 🖼️ 示例线稿图片
-│   └── fgfdgs1.png
+├── assets/                   # 🖼️ 示例素材
+│   └── sample_sketch.png     #   测试用线稿图片
 ├── test_stream.py            # 🧪 集成测试（需要GPU）
 └── test_thread_safety.py     # 🔒 线程安全测试（无需GPU）
 ```
