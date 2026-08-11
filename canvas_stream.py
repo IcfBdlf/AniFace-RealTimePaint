@@ -11,15 +11,17 @@ from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
 from streamdiffusion import StreamDiffusion
 from streamdiffusion.image_utils import postprocess_image
 
+import config
+
 class RealTimePaintApp:
     def __init__(self, root, base_pipe, stream_pipeline):
         self.root = root
-        self.root.title("🎨 AniFace 交互完全体 (集成线稿导入功能)")
+        self.root.title(config.WINDOW_TITLE)
         self.pipe = base_pipe
         self.stream = stream_pipeline
 
         # 初始化画布
-        self.sketch_img = Image.new("RGB", (512, 512), "white")
+        self.sketch_img = Image.new("RGB", config.IMAGE_SIZE, "white")
         self.draw_buffer = ImageDraw.Draw(self.sketch_img)
         self.sketch_tk_img = None  # 🔥 用于保存左侧导入图片的引用，防止垃圾回收
 
@@ -28,7 +30,7 @@ class RealTimePaintApp:
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
         # 左右双屏
-        self.canvas = tk.Canvas(self.main_frame, width=512, height=512, bg="white", cursor="pencil")
+        self.canvas = tk.Canvas(self.main_frame, width=config.IMAGE_SIZE[0], height=config.IMAGE_SIZE[1], bg="white", cursor="pencil")
         self.canvas.grid(row=0, column=0, padx=5, pady=5)
 
         self.output_label = ttk.Label(self.main_frame)
@@ -40,7 +42,7 @@ class RealTimePaintApp:
 
         # --- 第一行：提示词与基础功能控制 ---
         ttk.Label(self.control_frame, text="提示词 (Prompt):").grid(row=0, column=0, sticky=tk.W, padx=5)
-        self.prompt_var = tk.StringVar(value="1girl, masterpiece, hyper detailed, anime portrait, high quality, sharp focus")
+        self.prompt_var = tk.StringVar(value=config.DEFAULT_PROMPT)
         self.entry_prompt = ttk.Entry(self.control_frame, textvariable=self.prompt_var, width=55)
         self.entry_prompt.grid(row=0, column=1, padx=5, pady=5, sticky=(tk.W, tk.E))
         self.entry_prompt.bind("<Return>", lambda event: self.trigger_high_quality_render())
@@ -63,8 +65,8 @@ class RealTimePaintApp:
         self.entry_lora.insert(0, "")  # 用户自行填入 LoRA 路径
 
         ttk.Label(self.control_frame, text="权重(Strength):").grid(row=1, column=1, sticky=tk.E, padx=120)
-        self.lora_weight_var = tk.DoubleVar(value=0.8)
-        self.scale_lora = ttk.Scale(self.control_frame, from_=0.0, to=1.5, variable=self.lora_weight_var, orient=tk.HORIZONTAL, length=100)
+        self.lora_weight_var = tk.DoubleVar(value=config.DEFAULT_LORA_WEIGHT)
+        self.scale_lora = ttk.Scale(self.control_frame, from_=config.LORA_WEIGHT_MIN, to=config.LORA_WEIGHT_MAX, variable=self.lora_weight_var, orient=tk.HORIZONTAL, length=100)
         self.scale_lora.grid(row=1, column=1, sticky=tk.E, padx=10)
 
         self.btn_lora = ttk.Button(self.control_frame, text="📦 挂载/更新 LoRA", command=self.load_lora_weights_action)
@@ -78,7 +80,7 @@ class RealTimePaintApp:
 
         # 4. 线程锁与状态变量
         self.last_render_time = 0
-        self.render_interval = 0.15
+        self.render_interval = config.RENDER_INTERVAL
         self.is_rendering = False
         self.need_update_again = False
         self._preview_thread = None  # 防止预览线程堆积
@@ -90,7 +92,7 @@ class RealTimePaintApp:
         # 注册窗口关闭回调
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-        self.update_right_display(Image.new("RGB", (512, 512), "white"))
+        self.update_right_display(Image.new("RGB", config.IMAGE_SIZE, "white"))
         print("🚀 带有【本地线稿导入】功能的综合画板系统全线就绪！")
 
     def import_sketch_image(self):
@@ -104,7 +106,7 @@ class RealTimePaintApp:
             try:
                 print(f"📥 正在读取线稿: {file_path}")
                 # 1. 读取并规范化图片（转换成RGB，强制缩放到512x512）
-                imported_img = Image.open(file_path).convert("RGB").resize((512, 512))
+                imported_img = Image.open(file_path).convert("RGB").resize(config.IMAGE_SIZE)
 
                 # 2. 覆盖后台内存里的画布，并重置画笔，让用户可以在导入的图上接着画
                 with self.canvas_lock:
@@ -127,9 +129,9 @@ class RealTimePaintApp:
     def paint(self, event):
         x, y = event.x, event.y
         if self.last_x and self.last_y:
-            self.canvas.create_line(self.last_x, self.last_y, x, y, width=4, fill="black", capstyle=tk.ROUND, smooth=True)
+            self.canvas.create_line(self.last_x, self.last_y, x, y, width=config.PEN_WIDTH, fill=config.PEN_COLOR, capstyle=tk.ROUND, smooth=True)
             with self.canvas_lock:
-                self.draw_buffer.line([self.last_x, self.last_y, x, y], fill="black", width=4)
+                self.draw_buffer.line([self.last_x, self.last_y, x, y], fill=config.PEN_COLOR, width=config.PEN_WIDTH)
 
             current_time = time.time()
             should_render = False
@@ -192,17 +194,13 @@ class RealTimePaintApp:
             return
 
         try:
+            # 模型组件已共享，只需在一处加载 LoRA 即可同时生效
             self.pipe.unload_lora_weights()
-            self.stream.pipe.unload_lora_weights()
-
             self.pipe.load_lora_weights(lora_path, adapter_name="paint_lora")
-            self.stream.pipe.load_lora_weights(lora_path, adapter_name="paint_lora")
-
             self.pipe.set_adapters(["paint_lora"], adapter_weights=[weight])
-            self.stream.pipe.set_adapters(["paint_lora"], adapter_weights=[weight])
 
             current_prompt = self.prompt_var.get()
-            self.stream.prepare(prompt=current_prompt, num_inference_steps=2)
+            self.stream.prepare(prompt=current_prompt, num_inference_steps=config.PREVIEW_NUM_INFERENCE_STEPS)
 
             messagebox.showinfo("成功", f"LoRA 补丁挂载成功！")
         except Exception as e:
@@ -231,9 +229,9 @@ class RealTimePaintApp:
             result = self.pipe(
                 prompt=prompt_snapshot,
                 image=img_snapshot,
-                num_inference_steps=25,
-                controlnet_conditioning_scale=1.1,
-                controlnet_ending_step=0.35  # 高情商纠错，防止导入的线稿有细微瑕疵
+                num_inference_steps=config.HQ_NUM_INFERENCE_STEPS,
+                controlnet_conditioning_scale=config.HQ_CONTROLNET_CONDITIONING_SCALE,
+                controlnet_ending_step=config.HQ_CONTROLNET_ENDING_STEP
             )
             output_image = result.images[0]
             if not self._shutdown_event.is_set():
@@ -268,16 +266,16 @@ class RealTimePaintApp:
     def clear_canvas(self):
         self.canvas.delete("all")
         with self.canvas_lock:
-            self.sketch_img = Image.new("RGB", (512, 512), "white")
+            self.sketch_img = Image.new("RGB", config.IMAGE_SIZE, "white")
             self.draw_buffer = ImageDraw.Draw(self.sketch_img)
-        self.update_right_display(Image.new("RGB", (512, 512), "white"))
+        self.update_right_display(Image.new("RGB", config.IMAGE_SIZE, "white"))
 
     def on_closing(self):
         """优雅关闭：等待后台渲染线程完成后销毁窗口，避免 CUDA 报错"""
         print("🛑 正在安全关闭应用...")
         self._shutdown_event.set()
         self._shutdown_attempts = 0
-        self._shutdown_max_attempts = 25  # 最多等待 25 * 200ms = 5 秒
+        self._shutdown_max_attempts = config.SHUTDOWN_MAX_ATTEMPTS
         self._check_shutdown_complete()
 
     def _check_shutdown_complete(self):
@@ -289,7 +287,7 @@ class RealTimePaintApp:
             hq_busy = self.is_rendering
 
         if (preview_alive or hq_busy) and self._shutdown_attempts < self._shutdown_max_attempts:
-            self.root.after(200, self._check_shutdown_complete)
+            self.root.after(config.SHUTDOWN_CHECK_INTERVAL_MS, self._check_shutdown_complete)
         else:
             self.root.destroy()
 
@@ -298,25 +296,41 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"正在配置高性能设备: {device}...")
 
+    # 1. 加载 ControlNet（只需加载一次）
     controlnet = ControlNetModel.from_pretrained(
-        "lllyasviel/sd-controlnet-scribble", torch_dtype=torch.float16
+        config.CONTROLNET_MODEL_ID, torch_dtype=torch.float16
     )
+
+    # 2. 加载基础 Pipeline（UNet / VAE / TextEncoder 唯此一份）
     base_pipe = StableDiffusionControlNetPipeline.from_pretrained(
-        "stablediffusionapi/counterfeit-v30",
+        config.BASE_MODEL_ID,
         controlnet=controlnet,
         torch_dtype=torch.float16
     ).to(device)
     base_pipe.safety_checker = None
 
-    stream_pipe = StableDiffusionControlNetPipeline.from_pretrained(
-        "stablediffusionapi/counterfeit-v30",
-        controlnet=controlnet,
-        torch_dtype=torch.float16
-    ).to(device)
+    # 3. 共享模型组件，创建 StreamDiffusion 专用 Pipeline（节省 ~5GB 显存）
+    stream_pipe = StableDiffusionControlNetPipeline(
+        vae=base_pipe.vae,
+        text_encoder=base_pipe.text_encoder,
+        tokenizer=base_pipe.tokenizer,
+        unet=base_pipe.unet,
+        controlnet=base_pipe.controlnet,
+        scheduler=base_pipe.scheduler,
+        safety_checker=None,
+        feature_extractor=base_pipe.feature_extractor,
+        requires_safety_checker=False,
+    )
 
-    stream = StreamDiffusion(stream_pipe, t_index_list=[0, 1], torch_dtype=torch.float16)
-    initial_prompt = "1girl, masterpiece, hyper detailed, anime portrait, high quality, sharp focus"
-    stream.prepare(prompt=initial_prompt, num_inference_steps=2)
+    stream = StreamDiffusion(
+        stream_pipe,
+        t_index_list=config.PREVIEW_T_INDEX_LIST,
+        torch_dtype=torch.float16,
+    )
+    stream.prepare(
+        prompt=config.DEFAULT_PROMPT,
+        num_inference_steps=config.PREVIEW_NUM_INFERENCE_STEPS,
+    )
 
     root = tk.Tk()
     app = RealTimePaintApp(root, base_pipe, stream)

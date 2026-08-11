@@ -1,0 +1,25 @@
+# AniFaceProject 依赖清单
+# 安装: pip install -r requirements.txt
+# 环境: conda env aniface_diff / Python 3.10+ / CUDA 12.1 / RTX 4080 Laptop
+
+# =============================================================================
+# 核心深度学习框架
+# =============================================================================
+torch>=2.5.0              # PyTorch (需 CUDA 12.1 支持)
+diffusers==0.24.0          # HuggingFace Diffusers (Stable Diffusion Pipeline)
+transformers==4.36.2       # HuggingFace Transformers (Text Encoder)
+accelerate>=1.13.0         # 分布式推理加速
+
+# =============================================================================
+# 图像处理
+# =============================================================================
+Pillow>=12.0.0             # PIL 图像处理 (画布绘制、格式转换)
+numpy>=2.0.0               # 数值计算
+
+# =============================================================================
+# StreamDiffusion 实时流式推理
+# =============================================================================
+# pip install git+https://github.com/cumulo-autumn/StreamDiffusion.git 或本地安装
+streamdiffusion==0.1.1
+fire>=0.5.0                # streamdiffusion 依赖
+omegaconf>=2.3.0            # streamdiffusion 依赖
