@@ -34,7 +34,7 @@ git switch -c restore/pre-sdxl backup/pre-sdxl-20260923
 | 采样器 | `EulerAncestralDiscreteScheduler` |
 | 画布 / 生成 | 512×512 / 1024×1024 |
 | 预览 / 精细 | 10 / 25 步，均重新采样 |
-| CFG / ControlNet 强度 / 结束比例 | 6.0 / 1.0 / 1.0 |
+| CFG / ControlNet 强度 / 结束比例 | 6.0 / 1.0 / 0.6 |
 | 显存策略 | CUDA float16，默认 model CPU offload，VAE tiling |
 | 模型缓存 | 项目 `artifacts/model-cache` |
 
@@ -60,3 +60,7 @@ git switch -c restore/pre-sdxl backup/pre-sdxl-20260923
 ## 验证边界
 
 验证结果见 [SDXL 验证记录](reports/SDXL_VALIDATION.md)。既有约 1 秒预览成绩属于 SD1.5，不得沿用。当前预览结果最大年龄预算为 30 秒，以免较慢的有效结果永远被淘汰；这只是过期策略，不意味着已达到实时目标。角色一致性需另选真实匹配 LoRA 评估。
+
+## 细节生成试用调整
+
+默认控制结束比例由 1.0 调为 0.6，保留 XL 的 1024 分辨率、CFG、采样器和步数；目的是给后期细节生成留出空间。勾选“尽量跟随线稿”仍使用 1.0，加载角色预设时以 JSON 中的 control_end 为准。重新启动应用才会读取新默认值。这个比例是试用起点，不是通用最优值；旧的 1.0 验证数字作为历史记录保留。

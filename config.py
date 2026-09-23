@@ -32,7 +32,7 @@ HISTORY_LIMIT = 30
 # 精细重绘（25 步，分辨率不变）
 HQ_NUM_INFERENCE_STEPS = 25
 HQ_CONTROLNET_CONDITIONING_SCALE = 1.0
-HQ_CONTROLNET_ENDING_STEP = 1.0  # 默认全程跟随线稿；预设可覆盖
+HQ_CONTROLNET_ENDING_STEP = 0.6  # 前 60% 引导结构，后期放松线稿限制；“尽量跟随线稿”可恢复全程
 
 # 渲染间隔（秒），防止预览请求过于密集
 RENDER_INTERVAL = 0.15
