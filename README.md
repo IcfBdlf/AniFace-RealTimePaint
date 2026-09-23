@@ -1,91 +1,90 @@
-# 🎨 AniFace — 实时线稿交互画板
+# AniFace — 手绘驱动的动漫参考画板
 
-将手绘线稿实时转换为高画质动漫风格头像。基于 **Stable Diffusion + ControlNet Scribble + StreamDiffusion**。
+目标：在选定角色或画风的情况下，由用户线稿控制姿势、构图和表情，持续生成参考图片，辅助同人创作与绘画学习。
 
-## 功能
+当前是 Tkinter + Counterfeit-V3.0 + ControlNet Scribble 原型。预览 10 步，精细重绘 25 步，均为 512×512；精细档重新采样，不是超分辨率，也不保证与预览细节一致。角色/画风预设流程已经实现，真实角色的一致性尚待指定 LoRA 后验证。
 
-| 功能 | 说明 |
-|------|------|
-| 🖊️ 手绘输入 | 在左侧画布自由涂鸦，右侧实时预览动漫风格渲染结果 |
-| ⚡ 实时预览 | StreamDiffusion 超低延迟流式渲染，笔触即出效果 |
-| 💎 超清重绘 | 停笔自动触发 25 步 ControlNet 高清渲染 |
-| 📥 导入线稿 | 支持 JPG/PNG/BMP/WebP 本地线稿图片导入 |
-| 📦 LoRA 挂载 | 动态加载/切换 LoRA 模型，自定义风格 |
-| 🧹 一键擦除 | 清除画布重新开始 |
+准备面试或系统学习当前代码，请读 [项目完整技术说明与面试准备](docs/INTERVIEW_GUIDE.md)：包含技术原理、源码流程、调度与失败恢复、测试证据及 25 个面试追问。旧版实现指南已删除。
 
-## 环境要求
+想逐段学习实际代码，请读 [核心源码逐函数学习手册](docs/CODE_WALKTHROUGH.md)：覆盖 76 个核心函数、全部配置项，并附原代码、执行说明、三个完整调用过程、测试例子和练习答案。
 
-- Python 3.10+
-- NVIDIA GPU（至少 8GB 显存，推荐 RTX 4080）
-- CUDA 12.1+
+## 运行
 
-## 安装
+在项目根目录运行（Windows PowerShell，推荐 Python 3.10/3.11 和 NVIDIA CUDA GPU）：
 
-```bash
-# 克隆仓库
-git clone https://github.com/IcfBdlf/AniFace-RealTimePaint.git
-cd AniFace-RealTimePaint
-
-# 安装依赖
-pip install torch diffusers streamdiffusion transformers accelerate
-pip install pillow tkinter
+```powershell
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install --upgrade pip
+.venv/Scripts/python.exe -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+.venv/Scripts/python.exe -m pip install -r requirements.txt
+.venv/Scripts/python.exe -m pip check
+.venv/Scripts/python.exe -X utf8 canvas_stream.py
 ```
 
-首次运行时会自动从 Hugging Face 下载模型（共约 10GB），请保持网络畅通。
+已有本机环境可直接执行最后一条。它通过系统包复用 `aniface_diff` 的 PyTorch；新机器请完整安装。Tkinter 由 Python 安装程序提供。CPU 使用 float32，但不适合当前交互速度目标。
+
+仅使用已有缓存：先设置 `$env:HF_HUB_OFFLINE = "1"`。首次启动可能下载模型；关闭加载窗口在第三方加载调用结束后的阶段边界生效。日志位于 `artifacts/logs/aniface.log`。
 
 ## 使用
 
-```bash
-python canvas_stream.py
+- 在左侧绘制或导入白底黑线线稿；支持橡皮擦、1–64 像素笔刷、撤销/重做、100%–300% 缩放、滚动条与中键平移。缩放仅影响显示，不改变推理分辨率。
+- 连续绘画时提交最新快照，允许同一配置的近期预览完成；清空、提示词或 LoRA 切换立即淘汰旧配置结果。预览最大年龄由 `MAX_PREVIEW_AGE_SECONDS` 控制，默认 5 秒。
+- 默认手动“精细重绘”；可以勾选停笔后 800ms 自动精细重绘。固定随机种子有助于减少随机变化，但不保证角色或细节一致。
+- “暂停生成”停止新推理并取消当前任务；恢复时重新提交当前画布。“固定参考”保留屏幕上的图，同时允许后台结果进入历史。上一张/下一张会自动固定参考，取消固定回到最新结果。最多保留 12 张历史。
+- “保存结果”保存当前显示图片为 PNG，并内嵌它对应的线稿和参数。字段为 `aniface.recipe`（JSON）、`aniface.sketch.png.base64`（线稿 PNG 的 Base64）。Pillow 的 `Image.open(path).info` 可读取；图片编辑器重新保存时可能删除这些字段。
+- 加载 LoRA 后才应用权重；同一路径只更新权重，不重新加载。界面分别显示编辑值和实际生效状态。可以卸载并恢复基础模型。
+- “打开角色/画风预设”读取本地 JSON；基础模型不匹配时拒绝应用，LoRA 加载成功后才切换预设。固定触发词与可编辑构图提示词分开。格式见 [预设说明](profiles/README.md)。
+- 模型安全检查未放行时保留上一张有效参考，状态栏说明原因。
+
+## 目录
+
+```text
+canvas_stream.py       桌面启动入口
+config.py              模型与推理默认设置
+src/                   应用、后台调度、管线、预设与参考图保存
+tests/                 自动回归测试，包含隐藏 Tk 窗口测试
+tools/                 基准、连续输入验收、GPU 回归、画质评估
+profiles/              角色/画风预设说明与模板（不包含模型）
+docs/                  当前设计与验收说明
+  reports/             评估报告
+  INTERVIEW_GUIDE.md    当前实现的完整技术与面试指南
+  history/             历史交接记录
+assets/                小型样例资源
+artifacts/             本地产物（Git 忽略）
+  checks/              GPU/窗口/压力测试结果及测试适配器
+  evaluations/         画质评估图片与指标
+  environment/         环境报告、版本快照与清理清单
+  model-cache/         已下载的模型权重
+  logs/                运行日志
+SESSION_HANDOFF.md     最新交接入口
+CHANGELOG.md           改动历史
 ```
 
-### 界面操作
+旧根目录脚本已迁入 `tools`，用 `python -m tools.模块名` 从根目录启动。当前 `.venv`、模型权重、素材和用户工具配置保留；一次性安装验证环境、下载缓存和过时脚本已清理，释放约 6.84 GiB。目录迁移与删除说明见 [docs/README.md](docs/README.md)。
 
-1. **左侧画布**：鼠标拖动画线稿
-2. **右侧面板**：实时预览渲染结果
-3. **提示词输入框**：修改生成的动漫风格描述，按 Enter 触发重绘
-4. **💎 25步超清重绘**：手动触发高质量渲染
-5. **📥 导入线稿图片**：选择本地线稿文件
-6. **🧹 擦除画布**：清空画板
-7. **LoRA 路径/ID**：填入 LoRA 文件路径，调整权重，点击挂载
+## 验证与评估
 
-### 提示词示例
-
-```
-1girl, masterpiece, hyper detailed, anime portrait, high quality, sharp focus
-```
-
-## 项目结构
-
-```
-├── canvas_stream.py       # 主应用（GUI + 渲染管线）
-├── test_stream.py         # 集成测试（模拟草图 → 渲染输出）
-├── test_thread_safety.py  # 线程安全单元测试（17 项，无需 GPU）
-├── assets/                # 示例素材
-│   └── sample_sketch.png  #   测试用线稿图片
-└── CHANGELOG.md           # 工作日志
+```powershell
+# 不需要 GPU 或下载模型；其中 4 项测试会创建隐藏 Tk 窗口，需要图形环境
+.venv/Scripts/python.exe -X utf8 -m unittest discover -s tests -v
+# 连续输入验收：不插入停笔等待
+.venv/Scripts/python.exe -X utf8 -m tools.continuous_preview
+.venv/Scripts/python.exe -X utf8 -m tools.continuous_preview --gpu --offline
+# 实际 Tk 图片更新 + GPU（隐藏窗口，连续模拟落笔）
+.venv/Scripts/python.exe -X utf8 -m tools.gui_smoke --offline
+# GPU 性能与适配器接口回归（零增量 LoRA 不代表角色一致性）
+.venv/Scripts/python.exe -X utf8 -m tools.benchmark --offline --verify-lora
+.venv/Scripts/python.exe -X utf8 -m tools.runtime_gpu --offline
+# 综合调度压力测试
+.venv/Scripts/python.exe -X utf8 -m tools.stress_renderer --seconds 180
+# 真实手绘/连续线稿快照评估；--input 可重复并按传入顺序记录
+.venv/Scripts/python.exe -X utf8 -m tools.evaluate_quality --offline --input "实际线稿路径.png"
+# 模板须先填写有效本地 LoRA 路径
+.venv/Scripts/python.exe -X utf8 -m tools.evaluate_quality --offline --profile "profiles/my-character.json" --input "实际线稿路径.png"
 ```
 
-## 技术栈
+2026-09-19 连续输入 GPU 验收：12 秒、256 次快照更新、11 张可见预览，最大间隔 1.125 秒，无拦截。这是已预热模型的调度器加轮询测试，不包含完整鼠标/Tk 显示耗时，不代表任何机器都达到此速度。
 
-| 组件 | 说明 |
-|------|------|
-| **GUI** | Tkinter |
-| **基础模型** | Counterfeit-V3.0（动漫风格 Stable Diffusion） |
-| **ControlNet** | lllyasviel/sd-controlnet-scribble（线稿控制） |
-| **流式推理** | StreamDiffusion（低延迟实时渲染） |
-| **LoRA** | 动态风格挂载 |
+追加实际 Tk + GPU 验收：12 秒、255 次模拟落笔、11 次图片更新，最大更新间隔 1.297 秒，固定参考保存检查通过。此测试使用隐藏窗口，包含 Tk 图片对象更新与事件循环，不含鼠标硬件和屏幕物理延迟。
 
-## 测试
-
-```bash
-# 线程安全测试（mock pipeline，无需 GPU）
-python test_thread_safety.py
-
-# 集成测试（需要 GPU）
-python test_stream.py
-```
-
-## 许可证
-
-MIT
+以角色/画风一致性、人数/姿态响应、连续稳定性、参考价值和反馈延迟为验收标准，详见 [验收方案](docs/ACCEPTANCE.md)。历史 Lineart/Scribble 实验保留在 [报告目录](docs/README.md)，其中发现的构图失控和细节变化仍未证明解决；此轮调度和界面改进不等于模型画质提升。

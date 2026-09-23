@@ -1,31 +1,33 @@
 """AniFaceProject 入口 — 实时线稿转动漫交互画板
 
 用法:
-    PYTHONIOENCODING=utf-8 HF_HUB_OFFLINE=1 python canvas_stream.py
+    .venv/Scripts/python.exe -X utf8 canvas_stream.py
 """
 import logging
 import sys
 import tkinter as tk
+from pathlib import Path
 
-from src.pipeline import create_pipelines
 from src.app import RealTimePaintApp
+from src.startup import StartupWindow
 
 # ---- 日志 ----
+LOG_DIR = Path(__file__).resolve().parent / "artifacts" / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%m-%d %H:%M:%S",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("aniface.log", encoding="utf-8"),
+        logging.FileHandler(LOG_DIR / "aniface.log", encoding="utf-8"),
     ],
 )
 
 
 def main():
-    base_pipe, stream = create_pipelines()
     root = tk.Tk()
-    RealTimePaintApp(root, base_pipe, stream)
+    StartupWindow(root, RealTimePaintApp)
     root.mainloop()
 
 

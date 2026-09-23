@@ -2,3 +2,8 @@
 *.bin
 __pycache__/
 *.log
+.venv/
+artifacts/
+.claude/
+.env
+.env.*

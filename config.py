@@ -14,17 +14,22 @@ BASE_MODEL_ID = "stablediffusionapi/counterfeit-v30"
 # 推理参数
 # =============================================================================
 
-# 预览渲染（StreamDiffusion 实时流式推理）
-PREVIEW_NUM_INFERENCE_STEPS = 2
-PREVIEW_T_INDEX_LIST = [0, 1]
+# ControlNet 预览基线；尚非毫秒级流式推理，速度和质量需实测。
+PREVIEW_NUM_INFERENCE_STEPS = 10
+SEED = 42
+HQ_IDLE_DELAY_MS = 800
+UI_POLL_INTERVAL_MS = 50
+HISTORY_LIMIT = 30
 
-# 超清重绘（25 步精炼）
+# 精细重绘（25 步，分辨率不变）
 HQ_NUM_INFERENCE_STEPS = 25
 HQ_CONTROLNET_CONDITIONING_SCALE = 1.1
 HQ_CONTROLNET_ENDING_STEP = 0.35  # 提前结束 ControlNet 引导，防止导入线稿的细微瑕疵被放大
 
 # 渲染间隔（秒），防止预览请求过于密集
 RENDER_INTERVAL = 0.15
+MAX_PREVIEW_AGE_SECONDS = 5.0  # 超过此输入年龄的预览不再展示；按设备性能调整
+REFERENCE_HISTORY_LIMIT = 12
 
 # =============================================================================
 # 画布与图像参数
@@ -57,10 +62,9 @@ DEFAULT_PROMPT = (
 # =============================================================================
 
 SHUTDOWN_CHECK_INTERVAL_MS = 200  # 轮询间隔（毫秒）
-SHUTDOWN_MAX_ATTEMPTS = 25        # 最多等待次数，总计 25 * 200ms = 5 秒
 
 # =============================================================================
 # UI 文本
 # =============================================================================
 
-WINDOW_TITLE = "🎨 AniFace 交互完全体 (集成线稿导入功能)"
+WINDOW_TITLE = "AniFace — 线稿转动漫画板"
