@@ -94,7 +94,7 @@ def main():
             image = render_sketch(pipe, sketch, config.DEFAULT_PROMPT, steps)
             torch.cuda.synchronize()
             elapsed = time.perf_counter() - started
-            if image.size != config.IMAGE_SIZE:
+            if image.size != config.INFERENCE_SIZE:
                 raise AssertionError(f"意外输出尺寸: {image.size}")
             output = args.output / f"{name}-{i + 1}.png"
             image.save(output)
@@ -107,6 +107,13 @@ def main():
     report = {"gpu": torch.cuda.get_device_name(), "python": platform.python_version(),
               "torch": torch.__version__, "diffusers": diffusers.__version__,
               "model": config.BASE_MODEL_ID, "controlnet": config.CONTROLNET_MODEL_ID,
+              "model_revision": config.BASE_MODEL_REVISION,
+              "controlnet_revision": config.CONTROLNET_MODEL_REVISION,
+              "inference_size": config.INFERENCE_SIZE,
+              "guidance_scale": config.GUIDANCE_SCALE,
+              "negative_prompt": config.NEGATIVE_PROMPT,
+              "scheduler": type(pipe.scheduler).__name__,
+              "cpu_offload": config.ENABLE_MODEL_CPU_OFFLOAD,
               "seed": config.SEED, "prompt": config.DEFAULT_PROMPT,
               "control_guidance_end": config.HQ_CONTROLNET_ENDING_STEP,
               "load_seconds": load_seconds, "runs": records}

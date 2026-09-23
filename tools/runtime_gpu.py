@@ -41,7 +41,11 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     pipe = create_pipelines(local_files_only=args.offline)
     sketch = create_mock_sketch()
+    warmup_started = time.perf_counter()
+    render_sketch(pipe, sketch, config.DEFAULT_PROMPT, config.PREVIEW_NUM_INFERENCE_STEPS)
+    warmup_seconds = time.perf_counter() - warmup_started
     report = {"fixture_validation": verify_lora(pipe, sketch, args.output)}
+    report["first_render_seconds"] = warmup_seconds
     checks = 0
     def should_stop():
         nonlocal checks

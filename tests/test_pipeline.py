@@ -14,12 +14,13 @@ from src.renderer import RenderEvent, RenderRequest
 
 class TestPipelineContract(unittest.TestCase):
     def test_anime_model_polarity_and_clip_skip_are_explicit(self):
-        self.assertEqual(control_model_id("lineart_anime"), "lllyasviel/control_v11p_sd15s2_lineart_anime")
+        with self.assertRaisesRegex(ValueError, "SD1.5"):
+            control_model_id("lineart_anime")
         sketch = Image.new("RGB", (16, 16), "white")
         sketch.putpixel((1, 1), (180, 180, 180))
         self.assertEqual(prepare_control_image(sketch, "lineart_anime").tobytes(), sketch.tobytes())
         torch = Mock()
-        torch.inference_mode.side_effect = contextlib.nullcontext
+        torch.no_grad.side_effect = contextlib.nullcontext
         pipe = Mock(return_value=Mock(images=[sketch], nsfw_content_detected=None))
         pipe._aniface_control_type = "lineart_anime"
         with patch.dict(sys.modules, {"torch": torch}):
@@ -40,7 +41,7 @@ class TestPipelineContract(unittest.TestCase):
 
     def test_render_uses_pipeline_control_type(self):
         torch = Mock()
-        torch.inference_mode.side_effect = contextlib.nullcontext
+        torch.no_grad.side_effect = contextlib.nullcontext
         pipe = Mock(return_value=Mock(images=[Image.new("RGB", (16, 16))], nsfw_content_detected=None))
         sketch = Image.new("RGB", (16, 16), "white")
         with patch.dict(sys.modules, {"torch": torch}):
@@ -51,7 +52,7 @@ class TestPipelineContract(unittest.TestCase):
 
     def test_control_override_does_not_change_default(self):
         torch = Mock()
-        torch.inference_mode.side_effect = contextlib.nullcontext
+        torch.no_grad.side_effect = contextlib.nullcontext
         pipe = Mock(return_value=Mock(images=[Image.new("RGB", (16, 16))], nsfw_content_detected=None))
         original = config.HQ_CONTROLNET_ENDING_STEP
         with patch.dict(sys.modules, {"torch": torch}):
@@ -71,7 +72,7 @@ class TestPipelineContract(unittest.TestCase):
 
     def test_render_uses_correct_controlnet_keyword_seed_and_cancellation(self):
         torch = Mock()
-        torch.inference_mode.side_effect = contextlib.nullcontext
+        torch.no_grad.side_effect = contextlib.nullcontext
         pipe = Mock(return_value=Mock(images=[Image.new("RGB", (16, 16))], nsfw_content_detected=None))
         stop = Mock(return_value=False)
         with patch.dict(sys.modules, {"torch": torch}):
@@ -80,6 +81,10 @@ class TestPipelineContract(unittest.TestCase):
         self.assertEqual(kwargs["control_guidance_end"], config.HQ_CONTROLNET_ENDING_STEP)
         self.assertNotIn("controlnet_ending_step", kwargs)
         self.assertEqual(kwargs["prompt"], "portrait")
+        self.assertEqual(kwargs["image"].size, config.INFERENCE_SIZE)
+        self.assertEqual((kwargs["width"], kwargs["height"]), config.INFERENCE_SIZE)
+        self.assertEqual(kwargs["guidance_scale"], config.GUIDANCE_SCALE)
+        self.assertEqual(kwargs["negative_prompt"], config.NEGATIVE_PROMPT)
         torch.Generator.return_value.manual_seed.assert_called_once_with(config.SEED)
         stop.return_value = True
         with self.assertRaises(RenderCancelled):
@@ -87,7 +92,7 @@ class TestPipelineContract(unittest.TestCase):
 
     def test_checker_flag_blocks_result_even_when_pixels_are_not_black(self):
         torch = Mock()
-        torch.inference_mode.side_effect = contextlib.nullcontext
+        torch.no_grad.side_effect = contextlib.nullcontext
         pipe = Mock(return_value=Mock(images=[Image.new("RGB", (16, 16), "blue")],
                                      nsfw_content_detected=[True]))
         with patch.dict(sys.modules, {"torch": torch}), self.assertRaises(RenderBlocked):
@@ -95,7 +100,7 @@ class TestPipelineContract(unittest.TestCase):
 
     def test_unflagged_black_image_is_not_assumed_to_be_blocked(self):
         torch = Mock()
-        torch.inference_mode.side_effect = contextlib.nullcontext
+        torch.no_grad.side_effect = contextlib.nullcontext
         image = Image.new("RGB", (16, 16), "black")
         for flags in (None, [False]):
             with self.subTest(flags=flags), patch.dict(sys.modules, {"torch": torch}):

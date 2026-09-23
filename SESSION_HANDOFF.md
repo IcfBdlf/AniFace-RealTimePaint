@@ -1,4 +1,14 @@
-# AniFace 最新交接 — 2026-09-21
+# AniFace 最新交接 — 2026-09-23
+
+## 当前任务：旧版已备份，SDXL 迁移完成并验证
+
+用户授权先上传现版本，再换 SDXL。旧版已提交并推送至 GitHub `IcfBdlf/AniFace-RealTimePaint` 的 main：`780f1cb`；永久标签 `backup/pre-sdxl-20260923` 同步成功。当前迁移分支 `codex/sdxl-migration`。不删除旧模型缓存、不升级依赖，main 保留回退版本。
+
+已下载固定 revision 的 Animagine XL 3.1 和 Xinsir SDXL Scribble，切换 XL 管线/Euler a/CFG 6，操作画布 512、生成保存 1024，默认 CPU offload + VAE tiling。旧 SD1.5 控制模型拒绝混用，示例角色预设更新。新参数写入 PNG recipe。详见 docs/SDXL_MIGRATION.md。
+
+初步 GPU 输出通过，原 inference_mode + CPU offload 组合使 PEFT 回滚参数状态失败，已改用 no_grad，真实 GPU 回滚、取消恢复、调权重、替换与卸载全部通过。首次基准约 8.4 秒预览、15.4 秒 HQ，冷启动约 17.4 秒，不能沿用旧版一秒成绩。预览年龄预算设为 30 秒。隐藏 Tk 连续 40 秒、841 次输入、3 次图像更新、固定图保存通过。61 项测试包含 1024 保存/512 显示验证。真实“陈”线稿单种子生成通过：8.285 秒预览、15.735 秒精细，目视姿势/人物构图保留；不代表角色一致性验证。最终状态见 docs/reports/SDXL_VALIDATION.md。
+
+旧面试手册和代码摘录已在顶部标注 SD1.5 历史快照，当前模型变化查 SDXL 迁移文档。下文是此前记录，其中“未 commit/push”已被本节备份事实取代。
 
 ## 最新：逐函数代码学习手册
 

@@ -411,7 +411,7 @@ class RealTimePaintApp:
         self._poll_timer = self.root.after(config.UI_POLL_INTERVAL_MS, self._poll_renderer)
 
     def _display_image(self, image):
-        self.tk_img = ImageTk.PhotoImage(image)
+        self.tk_img = ImageTk.PhotoImage(ImageOps.contain(image, config.IMAGE_SIZE, Image.Resampling.LANCZOS))
         self.output_label.configure(image=self.tk_img)
 
     def _save_result(self):

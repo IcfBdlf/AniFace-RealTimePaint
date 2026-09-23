@@ -65,7 +65,7 @@ def make_contact_sheet(rows, path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--offline", action="store_true")
-    parser.add_argument("--control-type", choices=["scribble", "lineart", "lineart_anime"], default="scribble",
+    parser.add_argument("--control-type", choices=["scribble"], default="scribble",
                         help="实验控制模型；模型与输入极性一同切换，不修改 GUI 默认")
     parser.add_argument("--control-cache-dir", type=Path, help="仅控制模型的缓存目录")
     parser.add_argument("--clip-skip", type=int, choices=[1], help="实验：使用倒数第二层正向文本表示")
@@ -142,6 +142,12 @@ def main():
         "gpu": torch.cuda.get_device_name(), "python": platform.python_version(),
         "torch": torch.__version__, "diffusers": diffusers.__version__,
         "model": config.BASE_MODEL_ID,
+        "model_revision": config.BASE_MODEL_REVISION,
+        "controlnet_revision": config.CONTROLNET_MODEL_REVISION,
+        "inference_size": config.INFERENCE_SIZE,
+        "guidance_scale": config.GUIDANCE_SCALE,
+        "negative_prompt": config.NEGATIVE_PROMPT,
+        "scheduler": type(pipe.scheduler).__name__,
         "profile": profile.metadata() if profile else None,
         "controlnet": control_model_id(args.control_type),
         "clip_skip": args.clip_skip,

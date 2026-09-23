@@ -83,7 +83,30 @@ class TestModelLoader(unittest.TestCase):
         with patch.dict(sys.modules, {"torch": torch, "diffusers": diffusers}):
             with self.assertRaises(LoadCancelled):
                 create_pipelines(should_stop=stopped.is_set)
-        diffusers.StableDiffusionControlNetPipeline.from_pretrained.assert_not_called()
+        diffusers.StableDiffusionXLControlNetPipeline.from_pretrained.assert_not_called()
+
+    def test_sdxl_loader_uses_matching_models_and_offload(self):
+        import config
+        torch, diffusers = Mock(), Mock()
+        torch.device.return_value = Mock(type="cuda", index=0)
+        pipe = diffusers.StableDiffusionXLControlNetPipeline.from_pretrained.return_value
+        with patch.dict(sys.modules, {"torch": torch, "diffusers": diffusers}), \
+                patch.object(config, "ENABLE_MODEL_CPU_OFFLOAD", True):
+            self.assertIs(create_pipelines(local_files_only=True), pipe)
+        args = diffusers.StableDiffusionXLControlNetPipeline.from_pretrained.call_args
+        self.assertEqual(args.args[0], config.BASE_MODEL_ID)
+        self.assertEqual(args.kwargs["revision"], config.BASE_MODEL_REVISION)
+        self.assertTrue(args.kwargs["local_files_only"])
+        control = diffusers.ControlNetModel.from_pretrained.call_args
+        self.assertEqual(control.args[0], config.CONTROLNET_MODEL_ID)
+        self.assertEqual(control.kwargs["revision"], config.CONTROLNET_MODEL_REVISION)
+        pipe.to.assert_not_called()
+        pipe.enable_model_cpu_offload.assert_called_once_with(gpu_id=0)
+        pipe.enable_vae_tiling.assert_called_once()
+
+    def test_sd15_control_is_rejected_before_loading(self):
+        with self.assertRaisesRegex(ValueError, "SD1.5"):
+            create_pipelines(control_type="lineart")
 
 
 class TestStartupWindowEvents(unittest.TestCase):

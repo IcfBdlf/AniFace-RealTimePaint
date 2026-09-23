@@ -53,6 +53,22 @@ class ReferenceWorkflowTests(unittest.TestCase):
         self.app._on_paint(Mock(x=x+20, y=50))
         self.app._on_mouse_up(Mock())
 
+    def test_sdxl_output_is_displayed_small_but_saved_full_size(self):
+        from src.references import Reference
+        image = Image.new("RGB", config.INFERENCE_SIZE, "blue")
+        metadata = {"mode": "preview", "canvas_revision": 0, "input_to_display_seconds": 1.0}
+        ref = Reference.capture(image, self.app.sketch_img, metadata)
+        self.app._references = [ref]
+        self.app._show_reference(0)
+        self.assertEqual(self.app.tk_img.width(), config.IMAGE_SIZE[0])
+        self.assertEqual(self.app.tk_img.height(), config.IMAGE_SIZE[1])
+        output = Path(self.temp.name) / "sdxl.png"
+        with patch("src.app.filedialog.asksaveasfilename", return_value=str(output)):
+            self.app._save_result()
+        with Image.open(output) as saved:
+            self.assertEqual(saved.size, config.INFERENCE_SIZE)
+            self.assertEqual(saved.tobytes(), image.tobytes())
+
     def profile(self):
         root = Path(self.temp.name)
         (root / "adapter.safetensors").write_bytes(b"mock only")

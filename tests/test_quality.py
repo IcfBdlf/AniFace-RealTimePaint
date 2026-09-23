@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from PIL import Image
 import torch
@@ -33,7 +33,7 @@ class QualityEvaluationTests(unittest.TestCase):
                     "--expression", "微笑", "--output", str(output)]
             with patch("sys.argv", argv), patch.object(config, "SEED", config.SEED), \
                     patch.object(config, "HQ_CONTROLNET_ENDING_STEP", config.HQ_CONTROLNET_ENDING_STEP), \
-                    patch.object(quality, "create_pipelines", return_value=object()) as factory, \
+                    patch.object(quality, "create_pipelines", return_value=Mock()) as factory, \
                     patch.object(quality, "render_sketch", side_effect=render), \
                     patch.object(torch.cuda, "is_available", return_value=True), \
                     patch.object(torch.cuda, "get_device_name", return_value="mock"), \

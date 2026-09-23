@@ -18,7 +18,7 @@ from tools.benchmark import create_mock_sketch
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--offline", action="store_true")
-    parser.add_argument("--seconds", type=float, default=12)
+    parser.add_argument("--seconds", type=float, default=40)
     parser.add_argument("--output", type=Path, default=Path("artifacts/checks") / ("gui-" + datetime.now().strftime("%Y%m%d-%H%M%S")))
     args = parser.parse_args()
     if args.seconds < 3:

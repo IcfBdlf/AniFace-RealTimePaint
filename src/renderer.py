@@ -280,6 +280,13 @@ class RenderManager:
                     metadata = dict(request.metadata or {})
                     metadata.update(prompt=request.prompt, seed=config.SEED, steps=steps,
                                     mode=request.kind, base_model=config.BASE_MODEL_ID,
+                                    base_revision=config.BASE_MODEL_REVISION,
+                                    controlnet=config.CONTROLNET_MODEL_ID,
+                                    controlnet_revision=config.CONTROLNET_MODEL_REVISION,
+                                    inference_size=list(config.INFERENCE_SIZE),
+                                    guidance_scale=config.GUIDANCE_SCALE,
+                                    negative_prompt=config.NEGATIVE_PROMPT,
+                                    scheduler=type(getattr(self.pipe, "scheduler", None)).__name__,
                                     control_type=self.pipe.__dict__.get("_aniface_control_type", "scribble"),
                                     control_scale=config.HQ_CONTROLNET_CONDITIONING_SCALE,
                                     control_end=request.control_end if request.control_end is not None else config.HQ_CONTROLNET_ENDING_STEP,

@@ -1,7 +1,7 @@
 {
   "name": "请填写角色或画风名称",
   "kind": "character",
-  "base_model": "stablediffusionapi/counterfeit-v30",
+  "base_model": "cagliostrolab/animagine-xl-3.1",
   "lora_path": "请替换为本地LoRA文件路径.safetensors",
   "weight": 0.8,
   "trigger_words": "请替换为该LoRA的触发词",

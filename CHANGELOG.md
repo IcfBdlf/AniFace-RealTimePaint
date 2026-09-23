@@ -1,5 +1,13 @@
 # 工作日志
 
+## 2026-09-23 — SDXL 迁移
+
+- 旧版提交 `780f1cb`、标签 `backup/pre-sdxl-20260923` 推送 GitHub，迁移使用独立 `codex/sdxl-migration` 分支。
+- Animagine XL 3.1 + Xinsir SDXL Scribble，固定模型版本；XL 管线、Euler a、显式 CFG/负面提示词。
+- 512 操作画布与 1024 生成/保存分离，增加真实 Tk 尺寸回归；PNG 记录新模型参数。
+- CPU offload + VAE tiling；使用 no_grad 避免 inference tensor 与 PEFT 适配器回滚冲突。
+- SD1.5 控制模型拒绝混用，角色预设模板更新；旧性能/学习文档明确历史范围。验证见 docs/reports/SDXL_VALIDATION.md。
+
 ## 2026-09-21 — 核心源码逐函数学习手册
 
 - 新增 docs/CODE_WALKTHROUGH.md，结合实际源码讲解 76 个核心函数、配置项、调用过程、线程及状态变化，并提供测试/工具阅读例子和学习练习。
